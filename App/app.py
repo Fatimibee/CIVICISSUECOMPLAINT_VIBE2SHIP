@@ -1,37 +1,30 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from httpx import RequestError
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
+
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from httpx import RequestError
 import base64
 import uuid
 
-import os
-import base64
 from Agent.Graph import CivicIssueAgent
 from langgraph.types import Command
 
-app = FastAPI(
+# ROOT APP (wrapper for HF)
+app = FastAPI()
+
+# ACTUAL API APP
+api = FastAPI(
     title="Civic Issue Agent API",
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json",
-    root_path=""
+    openapi_url="/openapi.json"
 )
-from fastapi import Request
 
-@app.middleware("http")
-async def fix_hf_routing(request: Request, call_next):
-    request.scope["root_path"] = ""
-    response = await call_next(request)
-    return response
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# MOUNT API (CRITICAL FIX)
+app.mount("/", api)
 
 graph = CivicIssueAgent()
 
@@ -56,15 +49,15 @@ class HumanAction(BaseModel):
     approval: bool
     suggestion: str | None = None
 
-@app.get("/")
+@api.get("/")
 async def root():
     return {"message": "Civic Issue AI Agent running"}
 
-@app.get("/health")
+@api.get("/health")
 async def home():
     return {"status": "OK"}
 
-@app.post("/start_issue")
+@api.post("/start_issue")
 async def start_issue(
     image: UploadFile = File(...),
     userEmail: str = Form(...),
@@ -122,7 +115,7 @@ async def start_issue(
     return {"status": "completed"}
 
 
-@app.post("/human_action")
+@api.post("/human_action")
 async def human_action(data: HumanAction):
     config = sessions.get(data.thread_id)
     if not config:
