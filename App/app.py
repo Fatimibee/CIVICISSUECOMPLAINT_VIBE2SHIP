@@ -10,8 +10,11 @@ import base64
 from Agent.Graph import CivicIssueAgent
 from langgraph.types import Command
 
-app = FastAPI()
-
+app = FastAPI(
+    title="Civic Issue Agent API",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
