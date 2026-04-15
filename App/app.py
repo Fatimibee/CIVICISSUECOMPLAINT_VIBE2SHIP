@@ -13,7 +13,8 @@ from langgraph.types import Command
 app = FastAPI(
     title="Civic Issue Agent API",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    root_path=""
 )
 # Enable CORS
 app.add_middleware(
