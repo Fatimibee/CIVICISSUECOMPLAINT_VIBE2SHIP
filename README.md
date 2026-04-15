@@ -1,10 +1,11 @@
 ---
-title: CivicIssueAgentBackend
-emoji: ⚡
-colorFrom: red
-colorTo: red
+title: Civic Issue Agent Backend
+emoji: 🚀
+colorFrom: blue
+colorTo: green
 sdk: docker
-pinned: false
+app_port: 7860
 ---
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+# Civic Issue Agent Backend
+FastAPI backend running on Hugging Face Spaces.

@@ -1,33 +1,23 @@
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
-
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from httpx import RequestError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from httpx import RequestError
 import base64
 import uuid
 
+import os
+import base64
 from Agent.Graph import CivicIssueAgent
 from langgraph.types import Command
 
-# 🔥 ROOT APP (wrapper for HF)
-app = FastAPI()
-
-# 🔥 ACTUAL API APP
-api = FastAPI(
+app = FastAPI(
     title="Civic Issue Agent API",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json"
 )
-
-# 🔥 MOUNT API (CRITICAL FIX)
-app.mount("/", api)
-
-# ✅ CORS
-api.add_middleware(
+# Enable CORS
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -35,44 +25,38 @@ api.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ INIT GRAPH
 graph = CivicIssueAgent()
+
 sessions = {}
 
-# ✅ LOAD GOOGLE CREDS
+
 creds = os.getenv("GOOGLE_CREDS_BASE64")
+
 if creds:
     with open("credentials.json", "wb") as f:
         f.write(base64.b64decode(creds))
 
 token = os.getenv("GOOGLE_TOKEN_BASE64")
+
 if token:
     with open("token.json", "wb") as f:
         f.write(base64.b64decode(token))
+# Pydantic Model
 
-# ✅ MODEL
 class HumanAction(BaseModel):
     thread_id: str
     approval: bool
     suggestion: str | None = None
 
-# ✅ ROOT
-@api.get("/")
-def root():
+@app.get("/")
+async def root():
     return {"message": "Civic Issue AI Agent running"}
 
-# ✅ HEALTH
-@api.get("/health")
-def health():
+@app.get("/health")
+async def home():
     return {"status": "OK"}
 
-# ✅ DEBUG ROUTE
-@api.get("/check")
-def check():
-    return {"msg": "routes working"}
-
-# ✅ START ISSUE
-@api.post("/start_issue")
+@app.post("/start_issue")
 async def start_issue(
     image: UploadFile = File(...),
     userEmail: str = Form(...),
@@ -92,6 +76,7 @@ async def start_issue(
             "location": location,
         }
 
+        # Wrap the stream in a try block to catch LLM/Network timeouts
         for event in graph.stream(initial_input, config=config):
             node = list(event.keys())[0]
 
@@ -113,21 +98,23 @@ async def start_issue(
                     "emailDraft": state.values.get("emailDraft"),
                 }
 
-    except (RequestError, TimeoutError):
+    except (RequestError, TimeoutError) as e:
+        print(f"Network Error: {e}")
         return {
-            "status": "NETWORK_ERROR",
-            "message": "Check internet / API connection"
+            "status": "NETWORK_ERROR", 
+            "message": "Please check your internet connection ."
         }
     except Exception as e:
+        print(f"General Error: {str(e)}")
         return {
             "status": "ERROR",
-            "message": str(e)
+            "message": "An unexpected error occurred while processing the request."
         }
 
     return {"status": "completed"}
 
-# ✅ HUMAN ACTION
-@api.post("/human_action")
+
+@app.post("/human_action")
 async def human_action(data: HumanAction):
     config = sessions.get(data.thread_id)
     if not config:
@@ -147,6 +134,8 @@ async def human_action(data: HumanAction):
             "emailSent": state.values.get("emailSend"),
             "issueSaved": state.values.get("issueSaved"),
         }
-
+        
+    except (RequestError, TimeoutError):
+        return {"status": "ERROR", "message": "Connection timed out. Email may not have been sent."}
     except Exception as e:
         return {"status": "ERROR", "message": str(e)}
