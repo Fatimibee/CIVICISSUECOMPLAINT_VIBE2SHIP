@@ -1,0 +1,20 @@
+CIVIC_LABELS = [
+    "a photo of a pothole",
+    "a photo of a damaged road",
+    "a photo of a garbage dump",
+    "a photo of an overflowing trash bin",
+    "a photo of water leakage",
+    "a photo of a broken streetlight",
+    "a photo of a blocked drainage",
+    "a photo of sewage overflow",
+    "a photo of illegal dumping",
+    "a photo of a flooded street",
+    "a photo of a fallen tree",
+    "a photo of construction debris",
+    "a photo of a damaged traffic signal",
+    "a photo of a broken sidewalk",
+    "a photo of road encroachment",
+    "a photo of public vandalism",
+    "a photo of an air pollution source",
+    "a photo of water pollution"
+]

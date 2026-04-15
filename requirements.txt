@@ -1,0 +1,17 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+fastapi
+uvicorn
+python-multipart
+langgraph
+langchain
+langchain-huggingface
+huggingface_hub
+transformers
+torch
+pillow
+requests
+python-dotenv
+cloudinary
+google-auth
+google-auth-oauthlib
+google-api-python-client
