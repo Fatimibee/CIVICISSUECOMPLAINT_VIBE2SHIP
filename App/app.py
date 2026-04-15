@@ -14,7 +14,8 @@ app = FastAPI(
     title="Civic Issue Agent API",
     docs_url="/docs",
     redoc_url="/redoc",
-    root_path=""
+    openapi_url="/openapi.json",
+    root_path="/proxy/7860"
 )
 # Enable CORS
 app.add_middleware(
