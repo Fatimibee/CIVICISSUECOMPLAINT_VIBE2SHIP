@@ -15,8 +15,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
-    root_path="/proxy/7860"
+    root_path=""
 )
+from fastapi import Request
+
+@app.middleware("http")
+async def fix_hf_routing(request: Request, call_next):
+    request.scope["root_path"] = ""
+    response = await call_next(request)
+    return response
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
