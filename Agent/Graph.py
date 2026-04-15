@@ -1,8 +1,8 @@
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
-from CivicIssueAgent.Agent.Nodes import *
-from CivicIssueAgent.Agent.States import AgentState
+from Agent.Nodes import *
+from Agent.States import AgentState
 import base64
 import uuid
 def CivicIssueAgent():

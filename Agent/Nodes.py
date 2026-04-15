@@ -1,6 +1,6 @@
-from CivicIssueAgent.Agent.States import AgentState
-from CivicIssueAgent.Core.SendMail import *
-from CivicIssueAgent.Data.labels import CIVIC_LABELS
+from Agent.States import AgentState
+from Core.SendMail import *
+from Data.labels import CIVIC_LABELS
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.types import interrupt

@@ -7,7 +7,7 @@ import uuid
 
 import os
 import base64
-from CivicIssueAgent.Agent.Graph import CivicIssueAgent
+from Agent.Graph import CivicIssueAgent
 from langgraph.types import Command
 
 app = FastAPI()
