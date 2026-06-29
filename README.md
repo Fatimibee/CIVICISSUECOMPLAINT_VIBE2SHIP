@@ -1,12 +1,3 @@
----
-title: Civic Issue Reporting System
-emoji: 🏛️
-sdk: streamlit
-app_file: app.py
-colorFrom: blue
-colorTo: green
----
-
 # 🏛️ Civic Issue Reporting System
 ### AI-Powered Infrastructure Complaint Automation Platform
 
