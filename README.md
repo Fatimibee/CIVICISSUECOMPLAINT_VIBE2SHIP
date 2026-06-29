@@ -1,3 +1,12 @@
+---
+title: Civic Issue Reporting System
+emoji: 🏛️
+sdk: streamlit
+app_file: app.py
+colorFrom: blue
+colorTo: green
+---
+
 # 🏛️ Civic Issue Reporting System
 ### AI-Powered Infrastructure Complaint Automation Platform
 
@@ -100,7 +109,7 @@ Complaint Registered
 ## 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/Civic-Issue-Reporting-System.git
+git clone https://github.com/Fatimibee/CIVICISSUECOMPLAINT_VIBE2SHIP.git
 
 cd Civic-Issue-Reporting-System
 ```
