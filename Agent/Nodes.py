@@ -1,99 +1,125 @@
+from langchain_google_genai import ChatGoogleGenerativeAI
+
 from Agent.States import AgentState
 from Core.SendMail import *
 from Data.labels import CIVIC_LABELS
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.types import interrupt
 from PIL import Image
 import io
 import base64
 import os
+import re
 from dotenv import load_dotenv
-from transformers import CLIPProcessor, CLIPModel
-import torch
 import requests
 from langgraph.types import interrupt, Command
 import uuid
 import cloudinary
 import cloudinary.uploader
+from google import genai
+import json
+import mysql.connector
+import traceback
+from google.genai import types
+from pydantic import BaseModel, Field
 
 load_dotenv()
-DepartmentAPI = os.getenv("DEPARTMENT_API")
-SaveIssueAPI  = os.getenv("Save_Issue_API")
-HF_TOKEN      = os.getenv("HF_TOKEN")
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Image Saving at cloudinary cloud storage
-cloudinary.config(
-    cloud_name=os.getenv("CLOUD_NAME"),
-    api_key=os.getenv("CLOUD_API_KEY"),
-    api_secret=os.getenv("CLOUD_API_SECRET")
-)
-# CLIP MODEL
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
+DB_NAME = os.getenv("DB_NAME")
 
-clip_model = None
-processor   = None
-
-def load_clip():
-    global clip_model, clip_processor
-
-    if clip_model is None:
-        clip_model = CLIPModel.from_pretrained(
-            "openai/clip-vit-base-patch32",
-            low_cpu_mem_usage=True
-        )
-
-        clip_processor = CLIPProcessor.from_pretrained(
-            "openai/clip-vit-base-patch32"
-        )
-
-    return clip_model, clip_processor
-# HuggingFace LLM
-
-_endpoint = HuggingFaceEndpoint(
-    repo_id="Qwen/Qwen2.5-7B-Instruct",
-    huggingfacehub_api_token=HF_TOKEN,
-    task="conversational",
-    max_new_tokens=500,
-    temperature=0.3,
-)
-llm = ChatHuggingFace(llm=_endpoint)
-
-# NODE : IMAGE CLASSIFY
-
-def IssueClassify(state: AgentState):
-
-    clip_model, clip_processor = load_clip()
-
-    image_base64 = state["issueimage"]
-    image_data = image_base64.split(",")[1]
-    image_bytes = base64.b64decode(image_data)
-
-    image = Image.open(io.BytesIO(image_bytes))
-
-    inputs = clip_processor(
-        text=CIVIC_LABELS,
-        images=image,
-        return_tensors="pt",
-        padding=True
+def get_db_connection():
+    return mysql.connector.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        database=DB_NAME
     )
 
-    with torch.no_grad():
-        outputs = clip_model(**inputs)
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
+)
 
-    probs = outputs.logits_per_image.softmax(dim=1)
 
-    score, idx = torch.max(probs, dim=1)
+# 1. Define the structure you want Gemini to return
+class CivicIssueSchema(BaseModel):
+    issue_type: str = Field(description="The short category of the civic issue (e.g., pothole, garbage, broken streetlight)")
+    confidence: float = Field(description="Confidence score as a float between 0.0 and 1.0")
 
-    issue = CIVIC_LABELS[idx.item()]
-    score = float(score.item())
+def IssueClassify(state: AgentState):
+    print("\n--- [START] Running IssueClassify Node ---")
 
-    return {"issueClass": issue, "issueScore": score}
+    image_base64 = state.get("issueimage", "")
+    if not image_base64:
+        print("🚨 Error: state['issueimage'] is empty or missing.")
+        return {"issueClass": "unknown", "issueScore": 0.0}
 
+    try:
+        # 2. Extract and decode the raw base64 data strings cleanly
+        if "," in image_base64:
+            image_data = image_base64.split(",")[1]
+        else:
+            image_data = image_base64
+        image_bytes = base64.b64decode(image_data)
+
+       
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        # 4. Wrap image bytes inside the modern SDK Part layout
+        image_part = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type="image/jpeg"
+        )
+
+        print("[DEBUG] Dispatching payload with native structural schema...")
+        
+        # 5. Request structured JSON extraction directly from the model
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                image_part,
+                "Analyze this image and identify the type of civic complaint or hazard shown."
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=CivicIssueSchema,
+            ),
+        )
+
+        # 6. Parse out the structured response fields directly
+        print(f"[DEBUG] Raw JSON back from model: {response.text}")
+        result = json.loads(response.text)
+        
+        print(f"✅ CLASSIFICATION SUCCESS: {result['issue_type']} ({result['confidence']})")
+        return {
+            "issueClass": result["issue_type"],
+            "issueScore": float(result["confidence"])
+        }
+
+    except Exception as e:
+        print("\n" + "!" * 60)
+        print("🚨 CRITICAL SYSTEM EXCEPTION CAUGHT IN 'IssueClassify':")
+        
+        # Look for the specific Google API Error details
+        if hasattr(e, 'status_code'):
+            print(f"Google API Status Code: {e.status_code}")
+        if hasattr(e, 'message'):
+            print(f"Google API Error Message: {e.message}")
+            
+        print("\n--- FULL TRACEBACK ---")
+        traceback.print_exc()
+        print("!" * 60 + "\n")
+        
+        return {"issueClass": "unknown", "issueScore": 0.0}
+    
+    
 # NODE : IMAGE QUALITY
-
 def ImageQuality(state: AgentState):
     # Read directly from state — score set by IssueClassify
     print("FULL STATE IN IMAGEQUALITY:", dict(state))  #  add this
@@ -124,30 +150,40 @@ def ImageRouter(state:AgentState):
 def DepartmentInfo(state: AgentState):
     print("Running DepartmentInfo")
     issue = state["issueClass"]
-    url   = f"{DepartmentAPI}/{issue}"
 
     try:
-        response = requests.get(url)
-        if response.status_code != 200:
-            print("Department API bad status:", response.status_code)
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+         "SELECT department_id, email FROM departments WHERE LOWER(issue_type) = LOWER(%s)",
+        (issue,)
+        )
+        data = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not data:
+            print("No department mapped for issue:", issue)
             return {"departmentEmail": None, "departmentId": None}
 
-        data = response.json()
-        print("Department Email:", data.get("email"))
+        print("Department Email:", data["email"])
         return {
-            "departmentEmail": data.get("email"),
-            "departmentId":    data.get("department_id"),
+            "departmentEmail": data["email"],
+            "departmentId":    data["department_id"],
         }
 
     except Exception as e:
-        print("Department API error:", e)
+        print("Department DB error:", e)
         return {"departmentEmail": None, "departmentId": None}
 
-
-
 # NODE : EMAIL GENERATOR
-
 def EmailGenerator(state: AgentState):
+    
+    llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+    temperature=0.3
+    )
     print("Running EmailGenerator")
 
     issue      = state["issueClass"]
@@ -197,6 +233,7 @@ Rules:
 
     return {"emailDraft": response.content}
 
+
 # NODE : HUMAN APPROVAL
 def HumanApproval(state: AgentState):
 
@@ -228,7 +265,6 @@ def approvalRouter(state: AgentState):
 
 
 # NODE : SEND EMAIL + SAVE
-
 def sendAndSaveEmailNode(state: AgentState):
     print("--- Running sendAndSaveEmailNode ---")
 
@@ -238,7 +274,6 @@ def sendAndSaveEmailNode(state: AgentState):
 
     if image_base64:
         try:
-            # Handle potential header in base64 string
             if "," in image_base64:
                 image_data = image_base64.split(",")[1]
             else:
@@ -252,10 +287,8 @@ def sendAndSaveEmailNode(state: AgentState):
             print(f"Cloudinary Upload Success: {image_url}")
         except Exception as e:
             print(f"Cloudinary Upload Error: {e}")
-            # We continue even if upload fails, image_url will be None
 
     # 3. -------- SEND EMAIL --------
-    # Using the original base64 for the email attachment as per your sendEmail logic
     email_success = False
     try:
         email_success = sendEmail(
@@ -271,32 +304,30 @@ def sendAndSaveEmailNode(state: AgentState):
     # 4. -------- SAVE ISSUE IN DATABASE --------
     dbStatus = False
     try:
-        payload = {
-            "email": state["userEmail"],
-            "issue_type": state["issueClass"],
-            "location": state["location"],
-            "department_id": state["departmentId"],
-            "image_url": image_url # This is the hosted Cloudinary URL
-        }
-
-        print("Sending to Save API...")
-        response = requests.post(SaveIssueAPI, json=payload, timeout=10)
-        
-        # FIX: Check for 200 (OK) OR 201 (Created)
-        if 200 <= response.status_code < 300:
-            dbStatus = True
-            print(f"Save API Success ({response.status_code}): {response.text}")
-        else:
-            dbStatus = False
-            print(f"Save API Failed ({response.status_code}): {response.text}")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO issues (issue_id, email, issue_type, location, department_id, image_url)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            str(uuid.uuid4()),
+            state["userEmail"],
+            state["issueClass"],
+            state["location"],
+            state["departmentId"],
+            image_url
+        ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        dbStatus = True
+        print("Issue saved to DB")
 
     except Exception as e:
-        print(f"Save API Critical Error: {e}")
+        print(f"DB Save Error: {e}")
 
-    print(f"FINAL STATUS | Email Sent: {email_success} | DB Saved: {dbStatus}")
-
+    #  CRITICAL FIX: Return the keys so LangGraph updates your AgentState
     return {
         "emailSend": email_success,
-        "issueSaved": dbStatus,
-        "image_url": image_url
+        "issueSaved": dbStatus
     }
