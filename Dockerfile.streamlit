@@ -1,0 +1,20 @@
+# 1. Use a lightweight official Python image
+FROM python:3.10-slim
+
+# 2. Set working directory
+WORKDIR /app
+
+# 3. Copy requirements first for Docker caching optimization
+COPY requirements.txt .
+
+# 4. Install dependencies
+RUN pip install --no-cache-dir --default-timeout=100 -r requirements.txt
+
+# 5. Copy all project source directories and files
+COPY . .
+
+# 6. Set Python path for module resolution
+ENV PYTHONPATH=/app
+
+# 7. Run Streamlit using the dynamic port injected by Google Cloud at runtime
+CMD ["sh", "-c", "streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0"]
